@@ -1,0 +1,26 @@
+# Optional: redeploy the Modal backend on every push that touches it.
+# Needs two GitHub repo secrets: MODAL_TOKEN_ID and MODAL_TOKEN_SECRET
+# (create a token at modal.com → Settings → API Tokens).
+name: Deploy backend to Modal
+
+on:
+  push:
+    branches: [main]
+    paths: ["backend/**", "recorder/**", "video/**", ".github/workflows/modal-deploy.yml"]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install "modal>=1.6" fastapi python-multipart
+      - name: Deploy
+        working-directory: backend
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: modal deploy modal_app.py
