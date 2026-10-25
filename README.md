@@ -14,8 +14,8 @@ phone number (555-01xx) and plan is invented. Full spec: [`SPEC.md`](SPEC.md). H
 |---|---|---|
 | 1 | LumenCare demo app (check-in + vitals) | ✅ |
 | 2 | Recorder panel → events + masked screenshots → upload (Vercel + Modal) | ✅ |
-| 3 | Steps: segmentation + Clef judging → `steps.json` | ✅ built, deploy + check on a real recording |
-| 4 | Step titles + hints (Gemini) | next |
+| 3 | Steps: segmentation + Clef judging → `steps.json` | ✅ verified on a real recording |
+| 4 | Step titles + hints (Gemini → Claude → plain fallback) | ✅ built, deploy + check |
 | 5 | **Live guide** | after 4 |
 | S1–S2 | Chrome extension; Jev provider | stretch |
 
@@ -27,7 +27,7 @@ showme/
   recorder/   framework-agnostic TS shared by demo-app and the future extension
               domRecorder (events) · identity (testid → role+name → CSS path) · pageState · sensitive · frames (masked JPEGs)
   backend/    FastAPI (showme_backend/) + modal_app.py
-              segment.py (events → steps) · judge.py + providers.py (Clef) · thresholds.json · steps_cli.py
+              segment.py (events → steps) · judge.py + providers.py (Clef) · text.py (Gemini/Claude) · thresholds.json · steps_cli.py
 ```
 
 ## Using the hosted app

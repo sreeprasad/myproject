@@ -4,12 +4,17 @@ import json
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _offline(monkeypatch):
+    """Tests never call real Clef / Gemini / Claude, even if keys are exported in your shell."""
+    for k in ("SHOWME_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN", "GEMINI_API_KEY",
+              "ANTHROPIC_API_KEY", "DECISION_PROVIDER", "GEMINI_MODEL", "ANTHROPIC_MODEL"):
+        monkeypatch.delenv(k, raising=False)
+
+
 @pytest.fixture
 def data_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("SHOWME_DATA_DIR", str(tmp_path / "data"))
-    monkeypatch.delenv("SHOWME_API_TOKEN", raising=False)
-    monkeypatch.delenv("CLOUDFLARE_ACCOUNT_ID", raising=False)  # never call real Clef from tests
-    monkeypatch.delenv("CLOUDFLARE_API_TOKEN", raising=False)
     return tmp_path / "data"
 
 

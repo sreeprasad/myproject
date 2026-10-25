@@ -12,6 +12,7 @@ import os
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from .providers import Decision, DecisionProvider, ProviderError, get_provider
 from .segment import segment
@@ -169,24 +170,35 @@ def resolve_provider(name: str | None = None) -> tuple[DecisionProvider | None, 
         return None, str(e)
 
 
-async def build_steps(rec_dir: Path, provider: DecisionProvider | None = None, provider_note: str | None = None) -> dict:
+async def build_steps(rec_dir: Path, provider: DecisionProvider | None = None, provider_note: str | None = None,
+                      *, text_client=None, write_words: bool = True) -> dict:
+    from .text import write_text
+
     events = json.loads((rec_dir / "events.json").read_text())
     candidates = segment(events)
     judged = await judge_steps(rec_dir, candidates, provider)
     for s in judged:
-        s.setdefault("title", None)  # milestone 4 (TEXT) fills these
+        s.setdefault("title", None)
         s.setdefault("narration", None)
     kept = [s for s in judged if s["decision"]["keep"]]
     for n, s in enumerate(kept, start=1):
         s["number"] = n  # 1-based position among kept steps (what the learner sees)
+    words = await write_text(rec_dir, kept, client=text_client) if write_words else None
     doc = {
         "schema": "showme.steps/1",
         "recording_id": rec_dir.name,
         "generated_at": time.time(),
         "provider": {"name": provider.name, "model": provider.model} if provider else None,
         "provider_note": provider_note,
-        "workflow": {"title": None, "summary": None},  # filled by milestone 4 (TEXT)
+        "workflow": {
+            "title": words["title"] if words else None,
+            "summary": words["summary"] if words else None,
+            "text_provider": words["text_provider"] if words else None,
+            "text_model": words["text_model"] if words else None,
+            "text_errors": words["text_errors"] if words else [],
+        },
         "start_url": candidates[0]["url"] if candidates else None,
+        "start_path": urlparse(candidates[0]["url"]).path if candidates and candidates[0].get("url") else None,
         "counts": {"events": len(events), "candidates": len(candidates), "kept": len(kept)},
         "steps": judged,
     }

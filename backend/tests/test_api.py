@@ -20,10 +20,15 @@ def test_upload_has_no_video_and_builds_steps(data_dir):
     assert st["state"] == "steps_ready", st
     assert st["counts"] == {"events": len(workflow_a_events()), "candidates": 8, "kept": 8}  # no keys → unjudged
     files = client.get(f"/recordings/{rec_id}").json()["files"]
-    assert set(files) == {"events.json", "capture.json", "frames/e0001_before.jpg", "status.json", "steps.json"}
+    assert set(files) == {"events.json", "capture.json", "frames/e0001_before.jpg", "status.json", "steps.json", "decisions.jsonl"}
     assert not any(f.endswith((".webm", ".mp4")) for f in files)
     steps = client.get(f"/recordings/{rec_id}/steps").json()
     assert steps["schema"] == "showme.steps/1" and steps["provider"] is None and "CLOUDFLARE" in steps["provider_note"]
+    # no Gemini/Claude keys → deterministic words, so the guide always has text
+    assert steps["workflow"]["text_provider"] == "fallback"
+    kept = [s for s in steps["steps"] if s["decision"]["keep"]]
+    assert all(s["title"] and s["narration"] for s in kept)
+    assert steps["start_path"] == "/appointments"
 
 
 def test_video_field_is_not_accepted_as_a_requirement(data_dir):

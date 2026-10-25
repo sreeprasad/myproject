@@ -161,11 +161,13 @@ def _finish(s: _Step, i: int, all_steps: list[_Step]) -> dict:
     nxt = all_steps[i + 1] if i + 1 < len(all_steps) else None
     prev = all_steps[i - 1] if i > 0 else None
 
-    # Page state just before the action: the first event's own snapshot (clicks are captured before their
-    # default action runs), else what the previous step left behind.
-    before = next((e.get("page_state") for e in s.events if e.get("page_state")), None)
-    if before is None and prev is not None:
+    # Page state just before the action: what the previous step left behind. (An event's own snapshot can
+    # already show the result: Chrome flips a checkbox before the click listener runs.) First step: its own.
+    before = None
+    if prev is not None:
         before = prev.after_state or next((e.get("page_state") for e in reversed(prev.events) if e.get("page_state")), None)
+    if before is None:
+        before = next((e.get("page_state") for e in s.events if e.get("page_state")), None)
 
     # Page state after: navigation/change snapshots are post-action; otherwise the next step's "before".
     after = s.after_state

@@ -9,4 +9,7 @@ data/
 __pycache__/
 .venv/
 .DS_Store
+
+# local tool/agent files (not part of ShowMe)
 .agents/
+**/.agents/

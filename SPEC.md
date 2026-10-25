@@ -10,7 +10,7 @@
 The shareable demo video is a normal screen recording of a live-guide run (plus a backup clip for stage).
 
 ## Priority / cut line
-- MUST: M1 demo-app ✅, M2 capture + hosted upload ✅, M3 steps ✅ (deploying), M4 step text, M5 live guide.
+- MUST: M1 demo-app ✅, M2 capture + hosted upload ✅, M3 steps ✅, M4 step text ✅ (deploying), M5 live guide.
 - STRETCH, in order: S1 Chrome extension (guide on real websites), S2 JevProvider (text-only) switch.
 - Do not cut tests.
 
@@ -90,7 +90,12 @@ The shareable demo video is a normal screen recording of a live-guide run (plus 
    "criteria":[low…high]}}}. REST response: body.result.answers[name] = noul {noul: p} | choice {choice,
    probabilities, confidence} | score {score, legend, probabilities, confidence}; body.result.usage.input_tokens.
    Verified live 2026-10-24 (modal run modal_app.py::clef_check). If the published schema differs, the schema wins.
-3. TEXT (M4): Gemini → per kept step title (≤6 words) + narration/hint (≤20 words) + workflow title/summary.
+3. TEXT (M4): ONE call per workflow. Gemini `gemini-3.5-flash-lite` (generateContent, responseMimeType
+   application/json + responseSchema) → per kept step title (≤6 words) + narration/hint (≤20 words) + workflow
+   title (≤6 words) / summary (≤30 words). Strict validation (every kept number exactly once, word limits).
+   Claude (`claude-haiku-5-5`, Messages API) only on Gemini HTTP 429 or parse/validation failure. If both fail or
+   keys are missing: deterministic text from the step (e.g. Tick "ID verified"), so the guide always has words.
+   Input is sensitive-free; masked values are passed as "(hidden)". Logged to decisions.jsonl (trigger "text").
 4. Write steps.json (schema "showme.steps/1"): recording_id, provider, provider_note, workflow {title, summary},
    start_url, counts {events, candidates, kept}, steps[] (each with judge answers, decision {keep, drop_reason,
    importance, step_type, judged}, number among kept steps, title, narration). Single source of truth for the guide.
@@ -116,9 +121,10 @@ The shareable demo video is a normal screen recording of a live-guide run (plus 
 1. ✅ demo-app with Workflows A and B (data-testid everywhere).
 2. ✅ recorder + masked frames + upload; hosted on Vercel + Modal. (A video/debug-render path existed here and was
    removed on 2026-10-24: video is out of scope.)
-3. ✅ STEPS: segmentation + ClefProvider + thresholds + steps.json + decisions.jsonl; GET /steps. Verify on a real
-   recording after deploy.
-4. STEP TEXT: Gemini Flash-Lite (responseSchema) → titles + hints + workflow title/summary; Claude fallback.
+3. ✅ STEPS: segmentation + ClefProvider + thresholds + steps.json + decisions.jsonl; GET /steps. Verified on a
+   real recording (6/6 steps correct). Fix: before_state = previous step's after_state.
+4. ✅ STEP TEXT: Gemini Flash-Lite (responseSchema) → titles + hints + workflow title/summary; Claude fallback;
+   deterministic fallback. Verify with modal run modal_app.py::gemini_check and a real recording.
 5. LIVE GUIDE in the demo-app (spotlight, ring, hint card, checklist, DOM-first progress, Clef fallback,
    probability bars, blur toggle).
 S1. Chrome extension: capture + guide on real sites (service-worker-owned state, offscreen document using

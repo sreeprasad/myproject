@@ -230,8 +230,8 @@ def test_build_steps_with_mock_provider_drops_misclick_and_logs(tmp_path):
     assert all("title" in s and "narration" in s for s in doc["steps"])
     # images sent only when the frame file exists; first step has before+after
     assert mock.calls[0]["images"][0].endswith("e0001_before.jpg")
-    log = [json.loads(l) for l in (d / "decisions.jsonl").read_text().splitlines()]
-    assert len(log) == 8 and {l["trigger"] for l in log} == {"judge_step"}
+    log = [json.loads(l) for l in (d / "decisions.jsonl").read_text().splitlines() if '"judge_step"' in l]
+    assert len(log) == 8
     assert all("latency_ms" in l and l["provider"] == "mock" for l in log)
     assert json.loads((d / "steps.json").read_text())["counts"]["kept"] == 7
 
@@ -262,3 +262,18 @@ def test_provider_errors_fall_back_per_step(tmp_path):
 def test_thresholds_live_in_one_file():
     assert judge.THRESHOLDS["cut_if_meaningful_below"] == 0.3
     assert judge.THRESHOLDS["guide_step_done_at_least"] == 0.8
+
+
+def test_before_state_comes_from_previous_step_not_the_flipped_checkbox():
+    # Chrome flips a checkbox before click listeners run, so the click's own snapshot already says "filled".
+    ev = workflow_a_events()
+    flipped = {"url": "x", "headings": ["Patient Check-In"], "fields": [{"label": "ID verified", "filled": True}]}
+    for e in ev:
+        if e["id"] in ("e0015", "e0016", "e0017"):  # label click, input click, change for "ID verified"
+            if e.get("page_state"):
+                e["page_state"] = flipped
+    steps = {s["id"]: s for s in segment(ev)}
+    idv = next(s for s in steps.values() if (s["target"] or {}).get("identifiers", {}).get("testid") == "check-in-id-verified")
+    prev = steps[f"s{idv['index']:02d}"]  # the step before (ids are 1-based, index 0-based)
+    assert idv["before_state"] == prev["after_state"]
+    assert idv["before_state"] != flipped

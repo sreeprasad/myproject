@@ -6,7 +6,8 @@
 Pieces:
   - web          FastAPI app (same code as local) behind @modal.asgi_app
   - build_steps  segment → Clef judging → steps.json (what the live guide follows)
-  - clef_check   one tiny real Clef call to verify keys:  modal run modal_app.py::clef_check
+  - clef_check   one tiny real Clef call to verify keys:    modal run modal_app.py::clef_check
+  - gemini_check one tiny real Gemini text call (+ fallback):  modal run modal_app.py::gemini_check
 All share one Volume ("showme-data") mounted at /data. Secrets come from the Modal secret "showme".
 No video is uploaded, stored or rendered.
 """
@@ -74,6 +75,31 @@ def clef_check(model: str = "clef") -> dict:
     return out
 
 
+@app.function(image=image, secrets=secrets, timeout=120)
+def gemini_check() -> dict:
+    """Writes titles/hints for a 2-step toy workflow through the real provider chain (Gemini → Claude → fallback)."""
+    import asyncio
+    import tempfile
+    from pathlib import Path as P
+
+    from showme_backend.text import write_text
+
+    steps = [
+        {"number": 1, "action": "click", "navigates_to": "https://x/check-in/p01", "url": "https://x/appointments",
+         "target": {"tag": "a", "text": "Check in", "identifiers": {"role": "link", "name": "Check in"}},
+         "before_state": {"headings": ["Today's Appointments"]}, "after_state": {"headings": ["Patient Check-In"]}},
+        {"number": 2, "action": "toggle", "value": True, "url": "https://x/check-in/p01",
+         "target": {"tag": "input", "label": "ID verified", "identifiers": {"role": "checkbox", "name": "ID verified"}},
+         "before_state": {"headings": ["Patient Check-In"]}, "after_state": {"headings": ["Patient Check-In"]}},
+    ]
+    with tempfile.TemporaryDirectory() as tmp:
+        res = asyncio.run(write_text(P(tmp), steps))
+    out = {"workflow": res, "steps": [{"title": s["title"], "hint": s["narration"]} for s in steps]}
+    print(out)
+    return out
+
+
+# --- web endpoint ----------------------------------------------------------------------------------
 @app.function(image=image, volumes={DATA: volume}, secrets=secrets, timeout=600, max_containers=4)
 @modal.concurrent(max_inputs=20)
 @modal.asgi_app(label="showme-api")

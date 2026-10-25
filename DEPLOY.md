@@ -17,10 +17,14 @@ Chrome ──► Vercel: demo-app (LumenCare + Record panel)
      SHOWME_API_TOKEN=<random: openssl rand -hex 16> \
      CLOUDFLARE_ACCOUNT_ID=<account id> \
      CLOUDFLARE_API_TOKEN=<workers ai token> \
+     GEMINI_API_KEY=<aistudio.google.com key> \
      DECISION_PROVIDER=clef PRACTICE_PROVIDER=clef-flash
    ```
+   Optional: `ANTHROPIC_API_KEY=<key>` (Claude fallback when Gemini rate-limits or returns bad output),
+   `GEMINI_MODEL` (default `gemini-3.5-flash-lite`), `ANTHROPIC_MODEL` (default `claude-haiku-5-5`).
    Cloudflare token: dash.cloudflare.com → My Profile → API Tokens → Create Token → **Workers AI** template, 90-day expiry.
-4. **Check Clef:** `modal run modal_app.py::clef_check` prints `answers` for a noul, a choice and a score question.
+4. **Check the models:** `modal run modal_app.py::clef_check` prints Clef `answers` for a noul, a choice and a score
+   question. `modal run modal_app.py::gemini_check` prints `text_provider: gemini` plus two titles and hints.
 5. **Deploy:** `modal deploy modal_app.py`, which gives `https://<workspace>--showme-api.modal.run`. Check `/health` → `{"ok":true}`.
 6. **Vercel:** Add New → Project → import the repo → **Import single project** on `demo-app` (not "Services")
    → Root Directory `demo-app` → env vars `NEXT_PUBLIC_SHOWME_BACKEND` (Modal URL) and `NEXT_PUBLIC_SHOWME_TOKEN`
@@ -49,6 +53,7 @@ redeploys the backend on push.
 | Panel: "Failed to fetch" | Wrong `NEXT_PUBLIC_SHOWME_BACKEND`, or a custom domain that isn't `*.vercel.app`. In that case add `SHOWME_ALLOWED_ORIGINS` to the Modal secret. |
 | Steps "unjudged" / `provider_note` mentions CLOUDFLARE | Cloudflare keys missing from the Modal secret. Re-create it with all keys and redeploy. |
 | `decisions.jsonl` shows HTTP 401/403 from Cloudflare | Token expired or lacks Workers AI permission. Roll it and update the secret. |
+| `steps.json` → `workflow.text_provider: "fallback"` | Gemini (and Claude) failed or keys are missing. `workflow.text_errors` says why. The guide still works with plain text. |
 | Vercel env var value can't be viewed | It's a Secret type (write-only). Paste a new value, then update Modal to match. |
 
 ## Cost
