@@ -10,7 +10,7 @@
 The shareable demo video is a normal screen recording of a live-guide run (plus a backup clip for stage).
 
 ## Priority / cut line
-- MUST: M1 demo-app ✅, M2 capture + hosted upload ✅, M3 steps ✅, M4 step text ✅ (deploying), M5 live guide.
+- MUST: M1 demo-app ✅, M2 capture + hosted upload ✅, M3 steps ✅, M4 step text ✅, M5 live guide ✅ (deploying).
 - STRETCH, in order: S1 Chrome extension (guide on real websites), S2 JevProvider (text-only) switch.
 - Do not cut tests.
 
@@ -110,10 +110,15 @@ The shareable demo video is a normal screen recording of a live-guide run (plus 
   recorded bbox; re-located on scroll, resize and DOM changes. If the step's page differs (URL), say where to go.
 - PRIMARY progress (no model): a learner event on the same element (same identifier priority) with the same action
   type, AND the resulting page state matches the step's after_state (URL, dialog title, key labels) → advance.
-- MODEL (PRACTICE_PROVIDER, default clef-flash), only when the page changed and at most once per 2 s, never on a
-  timer: ambiguous DOM match → step_done (noul); no progress for 10 s or page matches no expected state →
-  current_step (choice over step ids + "off_track") and stuck (noul). Images: the step's recorded before/after +
-  the learner's current frame, all masked. Advance on DOM match or step_done ≥ 0.8.
+- Not mistakes: <label> clicks (the browser follows with the control's event) and clicks on the target of the
+  current or any pending step (e.g. opening a dropdown). Later same-page, non-navigating steps may be done early.
+- MODEL (PRACTICE_PROVIDER, default clef-flash) via POST /practice/{id}/check, at most once per 2 s (server
+  enforced, 429 otherwise), never on a timer. Triggers: "off_track" (2+ wrong clicks on a step), "idle" (no
+  progress for 10 s, once per step), "ambiguous" (target not found on the right page for 3 s). Questions:
+  step_done (noul), stuck (noul), current_step (choice over step_N + "off_track"). State: expected step + the
+  learner's sensitive-free page summary, path, seconds on step, wrong attempts, last 8 actions. Images: the
+  step's recorded before/after frames (masked at record time). The learner's screen is NOT captured (no share
+  prompt during the guide). Advance on DOM match, or on step_done ≥ 0.8 ("confirmed by Clef").
 - Stuck/off-track: re-highlight the target and show the hint more prominently. Show the latest probabilities as
   small bars, and label each completed step "confirmed by DOM" or "confirmed by Clef".
 
@@ -124,9 +129,11 @@ The shareable demo video is a normal screen recording of a live-guide run (plus 
 3. ✅ STEPS: segmentation + ClefProvider + thresholds + steps.json + decisions.jsonl; GET /steps. Verified on a
    real recording (6/6 steps correct). Fix: before_state = previous step's after_state.
 4. ✅ STEP TEXT: Gemini Flash-Lite (responseSchema) → titles + hints + workflow title/summary; Claude fallback;
-   deterministic fallback. Verify with modal run modal_app.py::gemini_check and a real recording.
-5. LIVE GUIDE in the demo-app (spotlight, ring, hint card, checklist, DOM-first progress, Clef fallback,
-   probability bars, blur toggle).
+   deterministic fallback. Verified on a real recording.
+5. ✅ LIVE GUIDE in the demo-app (spotlight, ring, hint card, checklist, DOM-first progress, Clef fallback,
+   probability bars, blur toggle). Engine: recorder/src/guide.ts (pure, shared with the extension); element
+   matching: recorder/src/match.ts; UI: demo-app/lib/guide + components/Guide*.tsx; model check:
+   POST /practice/{id}/check (backend/showme_backend/guide.py).
 S1. Chrome extension: capture + guide on real sites (service-worker-owned state, offscreen document using
     recorder/frames.ts with tabCapture, side panel).
 S2. JevProvider (text-only) + DECISION_PROVIDER / PRACTICE_PROVIDER switches.

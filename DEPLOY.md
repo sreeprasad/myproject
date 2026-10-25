@@ -44,6 +44,7 @@ redeploys the backend on push.
 - Steps: `https://<modal-url>/recordings/<rec-id>/steps?token=<token>`
 - Every Clef call (latency, tokens, answers): `https://<modal-url>/recordings/<rec-id>/files/decisions.jsonl?token=<token>`
 - Re-run steps for a recording: `modal run modal_app.py::build_steps --rec-id <rec-id>`
+- Guide checks show up in `decisions.jsonl` with trigger `guide_idle` / `guide_off_track` / `guide_ambiguous`
 - Logs: `modal app logs showme`
 
 ## Troubleshooting
@@ -53,6 +54,7 @@ redeploys the backend on push.
 | Panel: "Failed to fetch" | Wrong `NEXT_PUBLIC_SHOWME_BACKEND`, or a custom domain that isn't `*.vercel.app`. In that case add `SHOWME_ALLOWED_ORIGINS` to the Modal secret. |
 | Steps "unjudged" / `provider_note` mentions CLOUDFLARE | Cloudflare keys missing from the Modal secret. Re-create it with all keys and redeploy. |
 | `decisions.jsonl` shows HTTP 401/403 from Cloudflare | Token expired or lacks Workers AI permission. Roll it and update the secret. |
+| Guide panel shows "Clef check failed (HTTP 503)" | `PRACTICE_PROVIDER` / Cloudflare keys missing from the Modal secret. The guide still works by clicks. |
 | `steps.json` → `workflow.text_provider: "fallback"` | Gemini (and Claude) failed or keys are missing. `workflow.text_errors` says why. The guide still works with plain text. |
 | Vercel env var value can't be viewed | It's a Secret type (write-only). Paste a new value, then update Modal to match. |
 

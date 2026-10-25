@@ -15,8 +15,8 @@ phone number (555-01xx) and plan is invented. Full spec: [`SPEC.md`](SPEC.md). H
 | 1 | LumenCare demo app (check-in + vitals) | ✅ |
 | 2 | Recorder panel → events + masked screenshots → upload (Vercel + Modal) | ✅ |
 | 3 | Steps: segmentation + Clef judging → `steps.json` | ✅ verified on a real recording |
-| 4 | Step titles + hints (Gemini → Claude → plain fallback) | ✅ built, deploy + check |
-| 5 | **Live guide** | after 4 |
+| 4 | Step titles + hints (Gemini → Claude → plain fallback) | ✅ verified (gemini-3.5-flash-lite) |
+| 5 | **Live guide**: spotlight, hint card, DOM-first progress, Clef when unsure, blur toggle | ✅ built, deploy + try |
 | S1–S2 | Chrome extension; Jev provider | stretch |
 
 ## Layout
@@ -31,8 +31,27 @@ showme/
 ```
 
 ## Using the hosted app
-Open your Vercel URL → **Reset demo data** → **● Record** → share **this tab** → do the check-in → **Stop**.
-The panel shows *Finding steps… → 7 steps ready → View steps*.
+1. **Record (expert):** **Reset demo data** → **● Record** → share **this tab** → do the check-in → **Stop**.
+   The panel shows *Finding steps… → 6 steps ready*.
+2. **Guide (learner):** click **▶ Start guide**. Demo data resets, and the page dims except the next element, which gets
+   a pulsing ring and a hint card. Do the steps yourself: each one ticks off in the panel ("click" = confirmed by
+   your click). Click something else or wait 10 s and the hint turns amber; Clef is then asked, and its bars appear
+   (step done / stuck / which step). Toggle **Blur patient details** before screen-recording.
+
+## 3-minute demo script
+| Time | Say | Do |
+|---|---|---|
+| 0:00 | "Training new front-desk staff on an EHR takes shadowing and slide decks." | LumenCare appointments page |
+| 0:20 | "I record the check-in once." | **● Record**, share tab, check in Marisol (ID, consent, reason, room, Complete), **Stop** |
+| 0:55 | "No video is uploaded. Just clicks and masked screenshots. Clef drops misclicks; Gemini writes the hints." | Panel: *6 steps ready* (optionally open **View steps**) |
+| 1:15 | "Now a new hire." | **▶ Start guide**, tick **Blur patient details** |
+| 1:25 | "It points at the real button in the real app…" | Click **Check in**: step 1 ticks, the spotlight moves to "ID verified" |
+| 1:45 | "…and notices mistakes." | Click **My Patients**: the hint turns amber. Come back (**Take me there**) |
+| 2:05 | "If clicks aren't conclusive, Clef looks." | Wait 10 s on a step: Clef bars appear (*stuck*, *which step*) |
+| 2:25 | "Do it in any order; it keeps up." | Tick consent before ID: both tick |
+| 2:40 | "One recording, every new hire trained." | Finish → "All 6 steps done in …s" |
+
+Backup: screen-record a clean run beforehand (Cmd+Shift+5) with **Blur patient details** on.
 
 ## Local development (optional, offline fallback)
 ```bash

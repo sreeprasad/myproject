@@ -6,3 +6,5 @@ export * from "./pageState.ts";
 export * from "./domRecorder.ts";
 export * from "./tracks.ts";
 export * from "./frames.ts";
+export * from "./match.ts";
+export * from "./guide.ts";

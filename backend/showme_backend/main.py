@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 from typing import Callable
 
-from fastapi import BackgroundTasks, Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
+from fastapi import BackgroundTasks, Body, Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
@@ -175,6 +175,20 @@ def process(rec_id: str, background: BackgroundTasks):
     d = _dir_or_404(rec_id)
     _start_processing(background, d)
     return {"id": rec_id, "queued": True}
+
+
+@app.post("/practice/{rec_id}/check", dependencies=[Depends(require_token)])
+async def practice_check(rec_id: str, body: dict = Body(...)):
+    """Live guide: ask Clef (PRACTICE_PROVIDER) whether the learner finished / is stuck / which step they're on."""
+    from .guide import GuideCheckError, check
+
+    d = _dir_or_404(rec_id)
+    try:
+        out = await check(d, body)
+    except GuideCheckError as e:
+        raise HTTPException(e.status, str(e))
+    hooks.after_write()  # decisions.jsonl
+    return out
 
 
 @app.get("/health")

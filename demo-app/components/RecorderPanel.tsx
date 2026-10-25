@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useGuide } from "@/lib/guide/GuideProvider.tsx";
 import {
   stepsUrl,
   getStatus,
@@ -27,6 +28,7 @@ type State =
 
 // Everything inside data-showme-ignore is excluded from events, page state and sensitive tracks.
 export function RecorderPanel() {
+  const guide = useGuide();
   const [state, setState] = useState<State>({ kind: "idle" });
   const [elapsed, setElapsed] = useState(0);
   const [steps, setSteps] = useState(0);
@@ -109,9 +111,15 @@ export function RecorderPanel() {
   return (
     <div className="recorder" data-showme-ignore="" aria-label="ShowMe recorder">
       {state.kind === "idle" && (
-        <button type="button" className="rec-btn" onClick={start}>
-          <span className="rec-dot" aria-hidden="true" /> Record
-        </button>
+        <>
+          <button type="button" className="rec-btn" onClick={start}>
+            <span className="rec-dot" aria-hidden="true" /> Record
+          </button>
+          <button type="button" className="rec-btn guide-btn" onClick={() => void guide.start()} disabled={guide.loading}>
+            {guide.loading ? "Loading…" : "▶ Start guide"}
+          </button>
+          {guide.error && <span className="rec-error" title={guide.error}>{guide.error.slice(0, 70)}</span>}
+        </>
       )}
       {state.kind === "starting" && <span className="rec-note">Pick “This tab”, then Share…</span>}
       {state.kind === "recording" && (
@@ -132,9 +140,14 @@ export function RecorderPanel() {
             {proc?.state === "steps_ready" ? `${proc.counts?.kept ?? 0} steps ready` : PROC_LABEL[proc?.state ?? "uploaded"] ?? proc?.state}
           </span>
           {proc?.state === "steps_ready" && (
-            <a className="rec-btn" href={stepsUrl(state.id)} target="_blank" rel="noreferrer">
-              View steps
-            </a>
+            <>
+              <button type="button" className="rec-btn guide-btn" onClick={() => void guide.start(state.id)}>
+                ▶ Start guide
+              </button>
+              <a className="rec-link" href={stepsUrl(state.id)} target="_blank" rel="noreferrer">
+                View steps
+              </a>
+            </>
           )}
           {proc?.state === "error" && (
             <span className="rec-error" title={proc.error}>

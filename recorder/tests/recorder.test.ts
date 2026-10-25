@@ -98,3 +98,27 @@ test("scaled boxes are clamped to the frame", () => {
   assert.equal(b.x, 0);
   assert.equal(b.y + b.h, 400);
 });
+
+// ---------- live guide: element matching ----------
+import { pathOf, sameElement } from "../src/match.ts";
+
+test("guide matching uses the recording's highest-priority identifier", () => {
+  const rec = { testid: "check-in-id-verified", role: "checkbox", name: "ID verified", css_path: "form > input" };
+  assert.equal(sameElement({ testid: "check-in-id-verified", css_path: "other" }, rec), true);
+  assert.equal(sameElement({ testid: "check-in-consent-signed", role: "checkbox", name: "ID verified" }, rec), false);
+  // no testid recorded → role + name decides (real sites with generated classes)
+  const rn = { role: "button", name: "Save", css_path: "div:nth-of-type(3) > button" };
+  assert.equal(sameElement({ role: "button", name: "Save", css_path: "different > path" }, rn), true);
+  assert.equal(sameElement({ role: "button", name: "Cancel" }, rn), false);
+  // only a CSS path recorded
+  assert.equal(sameElement({ css_path: "main > a" }, { css_path: "main > a" }), true);
+  assert.equal(sameElement(undefined, rec), false);
+  assert.equal(sameElement({ testid: "x" }, {}), false);
+});
+
+test("pages are matched by path, not host", () => {
+  assert.equal(pathOf("https://myproject-n1sht0165-x.vercel.app/check-in/p01"), "/check-in/p01");
+  assert.equal(pathOf("https://myproject-six-green.vercel.app/check-in/p01?x=1#y"), "/check-in/p01");
+  assert.equal(pathOf("/appointments"), "/appointments");
+  assert.equal(pathOf(null), null);
+});

@@ -8,7 +8,7 @@ import pytest
 def _offline(monkeypatch):
     """Tests never call real Clef / Gemini / Claude, even if keys are exported in your shell."""
     for k in ("SHOWME_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN", "GEMINI_API_KEY",
-              "ANTHROPIC_API_KEY", "DECISION_PROVIDER", "GEMINI_MODEL", "ANTHROPIC_MODEL"):
+              "ANTHROPIC_API_KEY", "DECISION_PROVIDER", "PRACTICE_PROVIDER", "GEMINI_MODEL", "ANTHROPIC_MODEL"):
         monkeypatch.delenv(k, raising=False)
 
 

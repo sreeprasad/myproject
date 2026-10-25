@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useStore } from "@/lib/store.tsx";
+import { GuideProvider, useGuide } from "@/lib/guide/GuideProvider.tsx";
+import { GuideOverlay } from "./GuideOverlay.tsx";
+import { GuidePanel } from "./GuidePanel.tsx";
 import { RecorderPanel } from "./RecorderPanel.tsx";
 
 const NAV = [
@@ -11,6 +14,27 @@ const NAV = [
 ];
 
 export function Shell({ children }: { children: React.ReactNode }) {
+  return (
+    <GuideProvider>
+      <ShellInner>{children}</ShellInner>
+    </GuideProvider>
+  );
+}
+
+// Recording and guiding never run together: the guide replaces the recorder pill while active.
+function ShowMeLayer() {
+  const { active } = useGuide();
+  return active ? (
+    <>
+      <GuideOverlay />
+      <GuidePanel />
+    </>
+  ) : (
+    <RecorderPanel />
+  );
+}
+
+function ShellInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { dispatch, notify, toasts } = useStore();
 
@@ -51,7 +75,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         Fictional demo system. All patients and data are invented.
       </div>
       <main className="content">{children}</main>
-      <RecorderPanel />
+      <ShowMeLayer />
       <div className="toasts" role="status" aria-live="polite" data-testid="toast-region">
         {toasts.map((t) => (
           <div key={t.id} className="toast" data-testid="toast">
