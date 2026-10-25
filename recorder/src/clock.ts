@@ -4,6 +4,11 @@ export function nowEpoch(): number {
   return performance.timeOrigin + performance.now();
 }
 
-export function toVideoT(epoch: number, videoStartEpoch: number): number {
-  return Math.round((epoch - videoStartEpoch) * 1000) / 1000;
+/** ms since capture start, 0.1 ms precision. */
+export function relT(epoch: number, startEpoch: number): number {
+  return Math.round((epoch - startEpoch) * 10) / 10;
+}
+
+export function withT<T extends { epoch: number }>(items: T[], startEpoch: number): (T & { t: number })[] {
+  return items.map((i) => ({ ...i, t: relT(i.epoch, startEpoch) }));
 }

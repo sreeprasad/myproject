@@ -1,0 +1,8 @@
+{
+  "_comment": "All decision thresholds in one place. Probabilities are Clef noul outputs (p = probability of yes).",
+  "cut_if_meaningful_below": 0.3,
+  "guide_step_done_at_least": 0.8,
+  "guide_stuck_above": 0.6,
+  "guide_idle_seconds": 10,
+  "guide_min_seconds_between_model_calls": 2
+}

@@ -6,4 +6,3 @@ export * from "./pageState.ts";
 export * from "./domRecorder.ts";
 export * from "./tracks.ts";
 export * from "./frames.ts";
-export * from "./timeline.ts";

@@ -2,11 +2,10 @@
   "name": "showme-recorder",
   "version": "0.1.0",
   "private": true,
-  "description": "Framework-agnostic ShowMe recorder: DOM events, element identity, page-state summaries, sensitive tracks, frame capture and timeline math. No Chrome extension APIs.",
+  "description": "Framework-agnostic ShowMe recorder: DOM events, element identity, page-state summaries, sensitive tracks and masked frame capture. No Chrome extension APIs, no video.",
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./timeline": "./src/timeline.ts",
     "./types": "./src/types.ts",
     "./tracks": "./src/tracks.ts"
   },

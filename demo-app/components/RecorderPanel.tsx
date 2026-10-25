@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  fileUrl,
+  stepsUrl,
   getStatus,
   startRecording,
   uploadRecording,
@@ -12,11 +12,8 @@ import {
 } from "@/lib/recording.ts";
 
 const PROC_LABEL: Record<string, string> = {
-  uploaded: "Uploaded…",
-  normalizing: "Normalizing video…",
-  normalized: "Normalized",
-  rendering_debug: "Rendering debug video…",
-  debug_ready: "Debug video ready",
+  uploaded: "Finding steps…",
+  building_steps: "Finding steps…",
   error: "Processing failed",
 };
 
@@ -55,7 +52,7 @@ export function RecorderPanel() {
         const s = await getStatus(state.id);
         if (cancelled) return;
         setProc(s);
-        if (s.state === "debug_ready" || s.state === "error" || (s.state === "normalized" && s.note)) return;
+        if (s.state === "steps_ready" || s.state === "error") return;
       } catch {
         /* transient; keep polling */
       }
@@ -128,15 +125,15 @@ export function RecorderPanel() {
           </button>
         </>
       )}
-      {state.kind === "uploading" && <span className="rec-note">Saving recording…</span>}
+      {state.kind === "uploading" && <span className="rec-note">Uploading…</span>}
       {state.kind === "done" && (
         <>
           <span className="rec-note" title={state.id}>
-            {proc ? PROC_LABEL[proc.state] ?? proc.state : "Uploaded"}
+            {proc?.state === "steps_ready" ? `${proc.counts?.kept ?? 0} steps ready` : PROC_LABEL[proc?.state ?? "uploaded"] ?? proc?.state}
           </span>
-          {proc?.state === "debug_ready" && (
-            <a className="rec-btn" href={fileUrl(state.id, "debug.mp4")} target="_blank" rel="noreferrer">
-              Open debug video
+          {proc?.state === "steps_ready" && (
+            <a className="rec-btn" href={stepsUrl(state.id)} target="_blank" rel="noreferrer">
+              View steps
             </a>
           )}
           {proc?.state === "error" && (

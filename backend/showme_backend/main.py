@@ -1,5 +1,7 @@
 """ShowMe backend (FastAPI). Runs locally (uvicorn showme_backend.main:app --port 8000) or on Modal
 (backend/modal_app.py wraps the same app and swaps in Modal storage/processing hooks).
+
+Uploads contain NO video: only events.json, capture.json and masked before/after JPEGs.
 """
 
 from __future__ import annotations
@@ -47,15 +49,17 @@ app.add_middleware(
 )
 
 FRAME_NAME = re.compile(r"^[A-Za-z0-9_-]{1,64}\.jpg$")
-SERVABLE = re.compile(r"^(debug\.mp4|tutorial\.mp4|normalized\.mp4|[a-z_]+\.json|frames/[A-Za-z0-9_-]{1,64}\.jpg)$")
-MAX_VIDEO_BYTES = 1_500 * 1024 * 1024
+SERVABLE = re.compile(r"^([a-z_]+\.jsonl?|frames/[A-Za-z0-9_-]{1,64}\.jpg)$")
+MAX_JSON_BYTES = 50 * 1024 * 1024
+MAX_FRAME_BYTES = 8 * 1024 * 1024
+MAX_FRAMES = 600
 
 
 def require_token(
     x_showme_token: str | None = Header(default=None),
     token: str | None = Query(default=None),
 ) -> None:
-    """If SHOWME_API_TOKEN is set, every request must carry it (header, or ?token= for <video> links)."""
+    """If SHOWME_API_TOKEN is set, every request must carry it (header, or ?token= for links)."""
     expected = os.environ.get("SHOWME_API_TOKEN")
     if not expected:
         return
@@ -88,7 +92,7 @@ async def _save(upload: UploadFile, dst: Path, limit: int) -> int:
 
 def _start_processing(background: BackgroundTasks, d: Path) -> None:
     if hooks.process is not None:
-        hooks.process(d.name)
+        hooks.process(d.name)  # Modal: spawns build_steps
     else:
         background.add_task(run_all, d)
 
@@ -96,18 +100,17 @@ def _start_processing(background: BackgroundTasks, d: Path) -> None:
 @app.post("/recordings", dependencies=[Depends(require_token)])
 async def create_recording(
     background: BackgroundTasks,
-    video: UploadFile = File(...),
     events: UploadFile = File(...),
-    sensitive_tracks: UploadFile = File(...),
     capture: UploadFile = File(...),
     frames: list[UploadFile] = File(default=[]),
 ):
+    if len(frames) > MAX_FRAMES:
+        raise HTTPException(413, "too many frames")
     rec_id = time.strftime("rec-%Y%m%d-%H%M%S-") + secrets.token_hex(6)
     d = recording_dir(rec_id)
     (d / "frames").mkdir(parents=True)
-    await _save(video, d / "recording.webm", MAX_VIDEO_BYTES)
-    for up, name in ((events, "events.json"), (sensitive_tracks, "sensitive_tracks.json"), (capture, "capture.json")):
-        await _save(up, d / name, 200 * 1024 * 1024)
+    for up, name in ((events, "events.json"), (capture, "capture.json")):
+        await _save(up, d / name, MAX_JSON_BYTES)
         try:
             json.loads((d / name).read_text())
         except json.JSONDecodeError:
@@ -117,7 +120,7 @@ async def create_recording(
         name = Path(fr.filename or "").name
         if not FRAME_NAME.match(name):
             raise HTTPException(400, f"bad frame name: {fr.filename!r}")
-        await _save(fr, d / "frames" / name, 8 * 1024 * 1024)
+        await _save(fr, d / "frames" / name, MAX_FRAME_BYTES)
         saved += 1
     write_status(d, "uploaded", frames=saved)
     hooks.after_write()
@@ -130,7 +133,7 @@ def list_recordings():
     hooks.before_read()
     out = []
     for d in sorted(data_dir().iterdir(), reverse=True):
-        if d.is_dir() and (d / "recording.webm").exists():
+        if d.is_dir() and (d / "events.json").exists():
             out.append({"id": d.name, **read_status(d)})
     return out
 
@@ -139,13 +142,21 @@ def list_recordings():
 def get_recording(rec_id: str):
     d = _dir_or_404(rec_id)
     files = sorted(str(p.relative_to(d)) for p in d.rglob("*") if p.is_file())
-    capture = json.loads((d / "capture.json").read_text()) if (d / "capture.json").exists() else None
-    return {"id": rec_id, "status": read_status(d), "files": files, "capture": capture}
+    return {"id": rec_id, "status": read_status(d), "files": files}
 
 
 @app.get("/recordings/{rec_id}/status", dependencies=[Depends(require_token)])
 def get_status(rec_id: str):
     return read_status(_dir_or_404(rec_id))
+
+
+@app.get("/recordings/{rec_id}/steps", dependencies=[Depends(require_token)])
+def get_steps(rec_id: str):
+    d = _dir_or_404(rec_id)
+    p = d / "steps.json"
+    if not p.is_file():
+        raise HTTPException(404, f"steps not ready ({read_status(d).get('state')})")
+    return json.loads(p.read_text())
 
 
 @app.get("/recordings/{rec_id}/files/{path:path}", dependencies=[Depends(require_token)])

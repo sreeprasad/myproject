@@ -6,7 +6,7 @@ name: Deploy backend to Modal
 on:
   push:
     branches: [main]
-    paths: ["backend/**", "recorder/**", "video/**", ".github/workflows/modal-deploy.yml"]
+    paths: ["backend/**", ".github/workflows/modal-deploy.yml"]
   workflow_dispatch:
 
 jobs:

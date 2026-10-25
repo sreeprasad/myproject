@@ -16,5 +16,3 @@ def recording_dir(rec_id: str) -> Path:
         raise ValueError(f"bad recording id: {rec_id!r}")
     return data_dir() / rec_id
 
-
-OUTPUT_FPS = 30

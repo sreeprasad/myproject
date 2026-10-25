@@ -1,12 +1,14 @@
 "use client";
 
-// Demo-app fallback recorder: getDisplayMedia (current tab) + the shared /recorder modules.
+// Demo-app recorder: getDisplayMedia (current tab) + the shared /recorder modules.
+// The tab stream only feeds a short in-memory frame buffer; no video is recorded or uploaded.
+// Uploaded: events.json, capture.json and masked before/after JPEGs.
 import {
   CaptureSession,
   TrackStore,
   startDomRecorder,
   viewportNow,
-  withVideoT,
+  withT,
   type RecordedEvent,
 } from "showme-recorder";
 
@@ -26,9 +28,8 @@ export interface ActiveRecording {
 }
 
 export interface FinishedRecording {
-  video: Blob;
-  files: Record<string, Blob>; // name → blob (frames/…)
-  json: { events: unknown; sensitive_tracks: unknown; capture: unknown };
+  files: Record<string, Blob>; // name → masked JPEG (frames/…)
+  json: { events: unknown; capture: unknown };
 }
 
 /** Chrome's "sharing this tab" infobar shrinks the viewport right after capture starts. */
@@ -50,7 +51,7 @@ export async function startRecording(): Promise<ActiveRecording> {
   if (!navigator.mediaDevices?.getDisplayMedia) throw new Error("This browser cannot capture the tab (getDisplayMedia missing).");
 
   const stream = await navigator.mediaDevices.getDisplayMedia({
-    video: { frameRate: { ideal: 30, max: 30 } },
+    video: { frameRate: { ideal: 15, max: 30 } }, // frames feed a short screenshot buffer only
     audio: false,
     // Chrome-specific hints: offer this tab first and don't allow switching mid-recording.
     preferCurrentTab: true,
@@ -124,17 +125,14 @@ export async function startRecording(): Promise<ActiveRecording> {
     stopped = (async () => {
       stopDom();
       await Promise.allSettled(pending);
-      const { video, capture } = await session.stop();
-      const start = capture.video_start_epoch;
-      const finalCapture = { ...capture, frame_sizes: withVideoT(capture.frame_sizes, start) };
+      const capture = session.stop();
+      const start = capture.start_epoch;
       return {
-        video,
         files,
         json: {
-          // Events before the recorder started (none expected) are dropped.
-          events: withVideoT(events, start).filter((e) => e.video_t >= 0),
-          sensitive_tracks: withVideoT(tracks.samples, start),
-          capture: finalCapture,
+          // Events before capture started (none expected) are dropped.
+          events: withT(events, start).filter((e) => e.t >= 0),
+          capture: { ...capture, frame_sizes: withT(capture.frame_sizes, start) },
         },
       };
     })();
@@ -151,13 +149,7 @@ export async function startRecording(): Promise<ActiveRecording> {
 
 export async function uploadRecording(rec: FinishedRecording): Promise<string> {
   const form = new FormData();
-  form.append("video", rec.video, "recording.webm");
   form.append("events", new Blob([JSON.stringify(rec.json.events, null, 1)], { type: "application/json" }), "events.json");
-  form.append(
-    "sensitive_tracks",
-    new Blob([JSON.stringify(rec.json.sensitive_tracks)], { type: "application/json" }),
-    "sensitive_tracks.json",
-  );
   form.append("capture", new Blob([JSON.stringify(rec.json.capture, null, 1)], { type: "application/json" }), "capture.json");
   for (const [name, blob] of Object.entries(rec.files)) form.append("frames", blob, name.replace(/^frames\//, ""));
   const res = await fetch(`${BACKEND_URL}/recordings`, { method: "POST", body: form, headers: authHeaders() });
@@ -167,9 +159,10 @@ export async function uploadRecording(rec: FinishedRecording): Promise<string> {
 }
 
 export interface RecordingStatus {
-  state: "uploaded" | "normalizing" | "normalized" | "rendering_debug" | "debug_ready" | "error" | "unknown";
+  state: "uploaded" | "building_steps" | "steps_ready" | "error" | "unknown";
+  counts?: { events: number; candidates: number; kept: number };
   error?: string;
-  note?: string;
+  note?: string | null;
 }
 
 export async function getStatus(id: string): Promise<RecordingStatus> {
@@ -178,7 +171,12 @@ export async function getStatus(id: string): Promise<RecordingStatus> {
   return (await res.json()) as RecordingStatus;
 }
 
+const tokenQuery = () => (BACKEND_TOKEN ? `?token=${encodeURIComponent(BACKEND_TOKEN)}` : "");
+
 export function fileUrl(id: string, name: string): string {
-  const q = BACKEND_TOKEN ? `?token=${encodeURIComponent(BACKEND_TOKEN)}` : "";
-  return `${BACKEND_URL}/recordings/${id}/files/${name}${q}`;
+  return `${BACKEND_URL}/recordings/${id}/files/${name}${tokenQuery()}`;
+}
+
+export function stepsUrl(id: string): string {
+  return `${BACKEND_URL}/recordings/${id}/steps${tokenQuery()}`;
 }

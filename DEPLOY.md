@@ -1,71 +1,56 @@
 # Deploying ShowMe (Vercel + Modal)
 
 ```
-Chrome (you) ──► Vercel: demo-app (LumenCare + Record panel)
-                    │  upload (x-showme-token)
-                    ▼
-                 Modal: showme-api (FastAPI) ──spawn──► normalize (ffmpeg) ──spawn──► render_debug (Remotion)
-                    └──────────────── Volume "showme-data" (all recordings) ────────────────┘
+Chrome ──► Vercel: demo-app (LumenCare + Record panel)
+             │  events.json + capture.json + masked JPEGs   (no video)
+             ▼
+          Modal: showme-api (FastAPI) ──spawn──► build_steps (segment → Clef → steps.json)
+             └──────────── Volume "showme-data" ────────────┘
 ```
 
-One-time setup takes ~20 minutes, most of it waiting for the first Modal image build.
-After that, using it is just opening the Vercel URL in Chrome.
+## First-time setup (done once)
+1. **GitHub:** push the repo (private).
+2. **Modal:** `cd backend && python3.12 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && modal setup`
+3. **Secret** (`--force` replaces the whole secret, so always pass every key):
+   ```bash
+   modal secret create showme --force \
+     SHOWME_API_TOKEN=<random: openssl rand -hex 16> \
+     CLOUDFLARE_ACCOUNT_ID=<account id> \
+     CLOUDFLARE_API_TOKEN=<workers ai token> \
+     DECISION_PROVIDER=clef PRACTICE_PROVIDER=clef-flash
+   ```
+   Cloudflare token: dash.cloudflare.com → My Profile → API Tokens → Create Token → **Workers AI** template, 90-day expiry.
+4. **Check Clef:** `modal run modal_app.py::clef_check` prints `answers` for a noul, a choice and a score question.
+5. **Deploy:** `modal deploy modal_app.py`, which gives `https://<workspace>--showme-api.modal.run`. Check `/health` → `{"ok":true}`.
+6. **Vercel:** Add New → Project → import the repo → **Import single project** on `demo-app` (not "Services")
+   → Root Directory `demo-app` → env vars `NEXT_PUBLIC_SHOWME_BACKEND` (Modal URL) and `NEXT_PUBLIC_SHOWME_TOKEN`
+   (same as `SHOWME_API_TOKEN`) → Deploy.
 
-## 1. Push the repo to GitHub (private)
-On github.com create an empty **private** repo named `showme` (no README). Then:
+## Every update
 ```bash
-cd ~/src/showme
-git init -b main
-git add .
-git commit -m "ShowMe: milestone 2 (hosted)"
-git remote add origin git@github.com:<your-github-user>/showme.git   # or the https URL GitHub shows
-git push -u origin main
+cd ~/src && unzip -o ~/Downloads/showme-<milestone>.zip        # overwrites files, keeps .git/.venv/node_modules
+cd showme/backend && source .venv/bin/activate && modal deploy modal_app.py
+cd .. && git add -A && git commit -m "<milestone>" && git push     # Vercel redeploys on push
 ```
+Optional: add `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` as GitHub repo secrets and `.github/workflows/modal-deploy.yml`
+redeploys the backend on push.
 
-## 2. Modal backend
-```bash
-cd ~/src/showme/backend
-source .venv/bin/activate          # the venv from milestone 2 (python3.12 -m venv .venv if missing)
-pip install -r requirements.txt    # now includes the modal client
-modal setup                        # opens the browser to log in / create your account
-
-TOKEN=$(openssl rand -hex 16); echo "SAVE THIS TOKEN: $TOKEN"
-modal secret create showme SHOWME_API_TOKEN=$TOKEN
-
-modal deploy modal_app.py
-```
-The first deploy builds two images (ffmpeg, plus Node and headless Chrome for Remotion), which takes about 5–10 min.
-When it finishes, it prints a URL like `https://<workspace>--showme-api.modal.run`. Check it:
-```bash
-curl https://<workspace>--showme-api.modal.run/health      # → {"ok":true}
-```
-API keys for milestones 3–4 get added later by re-running `modal secret create showme --force ...` with all keys.
-
-## 3. Vercel frontend (no CLI)
-1. vercel.com → **Add New… → Project** → import the `showme` GitHub repo.
-2. **Root Directory:** `demo-app`. Keep "Include files outside the root directory" **on** (the app uses `../recorder`).
-3. **Environment Variables:**
-   - `NEXT_PUBLIC_SHOWME_BACKEND` = the Modal URL from step 2 (no trailing slash)
-   - `NEXT_PUBLIC_SHOWME_TOKEN` = the token you saved
-4. **Deploy.** You get `https://showme-<something>.vercel.app`.
-
-## 4. Use it
-Open the Vercel URL in Chrome → **Reset demo data** → **● Record** → share **this tab** → do Workflow A (include one
-scroll) → **Stop**. The panel then shows *Uploaded → Normalizing → Rendering debug video → Debug video ready*.
-Click **Open debug video**.
-
-## Updating later
-- **Frontend:** `git push`. Vercel redeploys automatically.
-- **Backend:** `cd backend && modal deploy modal_app.py`. Alternatively, add `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` as GitHub repo
-  secrets (Modal → Settings → API Tokens) and `.github/workflows/modal-deploy.yml` deploys on every push.
+## Checking a recording
+- Status: `https://<modal-url>/recordings/<rec-id>/status?token=<token>`
+- Steps: `https://<modal-url>/recordings/<rec-id>/steps?token=<token>`
+- Every Clef call (latency, tokens, answers): `https://<modal-url>/recordings/<rec-id>/files/decisions.jsonl?token=<token>`
+- Re-run steps for a recording: `modal run modal_app.py::build_steps --rec-id <rec-id>`
+- Logs: `modal app logs showme`
 
 ## Troubleshooting
 | Symptom | Fix |
 |---|---|
-| Panel: "Upload failed: HTTP 401" | `NEXT_PUBLIC_SHOWME_TOKEN` on Vercel ≠ `SHOWME_API_TOKEN` in the Modal secret. Fix, then redeploy Vercel (env vars apply on the next deploy). |
+| Panel: "Upload failed: HTTP 401" | `NEXT_PUBLIC_SHOWME_TOKEN` (Vercel) ≠ `SHOWME_API_TOKEN` (Modal). Fix it, then redeploy Vercel (env changes apply on the next build). |
 | Panel: "Failed to fetch" | Wrong `NEXT_PUBLIC_SHOWME_BACKEND`, or a custom domain that isn't `*.vercel.app`. In that case add `SHOWME_ALLOWED_ORIGINS` to the Modal secret. |
-| "Processing failed: normalize…" / "render:debug failed…" | `modal app logs showme`. Also check `render_debug.log` via `https://…/recordings/<id>` (the file list). |
-| Stuck on "Uploaded…" | `modal app list` should show `showme` deployed, then check `modal app logs showme`. |
+| Steps "unjudged" / `provider_note` mentions CLOUDFLARE | Cloudflare keys missing from the Modal secret. Re-create it with all keys and redeploy. |
+| `decisions.jsonl` shows HTTP 401/403 from Cloudflare | Token expired or lacks Workers AI permission. Roll it and update the secret. |
+| Vercel env var value can't be viewed | It's a Secret type (write-only). Paste a new value, then update Modal to match. |
 
-## Costs (see README)
-Vercel Hobby: free. Modal Starter: $30/month free credits. One debug render is a few cents.
+## Cost
+Vercel Hobby: free. Modal Starter: $30/month free credits (steps jobs are seconds of CPU). Clef: 10k free
+neurons/day; each judged step is ~1–2k input tokens (see `usage` in `decisions.jsonl`).

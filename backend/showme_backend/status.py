@@ -2,13 +2,11 @@ import json
 import time
 from pathlib import Path
 
-# uploaded → normalizing → normalized → rendering_debug → debug_ready   (any step can → error)
+# uploaded → building_steps → steps_ready   (or → error)
 
 
 def write_status(d: Path, state: str, **extra) -> None:
-    prev = read_status(d)
-    keep = {k: v for k, v in prev.items() if k not in ("state", "updated", "error")}
-    (d / "status.json").write_text(json.dumps({**keep, "state": state, "updated": time.time(), **extra}))
+    (d / "status.json").write_text(json.dumps({"state": state, "updated": time.time(), **extra}))
 
 
 def read_status(d: Path) -> dict:

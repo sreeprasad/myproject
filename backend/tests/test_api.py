@@ -1,43 +1,62 @@
 import io
 import json
-import time
 
 from fastapi.testclient import TestClient
 
+from showme_backend import main
 from showme_backend.main import app
 
-from .conftest import dumps, needs_ffmpeg
+from .conftest import upload_files
+from .workflow_a import workflow_a_events
 
 
-def _upload(client, webm: bytes, capture: dict, frames=(("e0001_before.jpg", b"\xff\xd8jpeg"),)):
-    files = [
-        ("video", ("recording.webm", io.BytesIO(webm), "video/webm")),
-        ("events", ("events.json", io.BytesIO(dumps([{"id": "e0001", "type": "click", "epoch": 1, "video_t": 0}])), "application/json")),
-        ("sensitive_tracks", ("sensitive_tracks.json", io.BytesIO(dumps([])), "application/json")),
-        ("capture", ("capture.json", io.BytesIO(dumps(capture)), "application/json")),
-    ] + [("frames", (n, io.BytesIO(b), "image/jpeg")) for n, b in frames]
-    return client.post("/recordings", files=files)
-
-
-def test_rejects_path_traversal_in_frame_names(data_dir, capture_factory):
+def test_upload_has_no_video_and_builds_steps(data_dir):
     client = TestClient(app)
-    r = _upload(client, b"x", capture_factory(640, 360), frames=(("../evil.jpg", b"x"),))
-    # The basename is taken, so "../evil.jpg" becomes "evil.jpg" inside frames/ — never outside.
-    assert r.status_code == 200
+    r = client.post("/recordings", files=upload_files(events=workflow_a_events()))
+    assert r.status_code == 200, r.text
+    rec_id = r.json()["id"]
+    # TestClient runs background tasks before returning.
+    st = client.get(f"/recordings/{rec_id}/status").json()
+    assert st["state"] == "steps_ready", st
+    assert st["counts"] == {"events": len(workflow_a_events()), "candidates": 8, "kept": 8}  # no keys → unjudged
+    files = client.get(f"/recordings/{rec_id}").json()["files"]
+    assert set(files) == {"events.json", "capture.json", "frames/e0001_before.jpg", "status.json", "steps.json"}
+    assert not any(f.endswith((".webm", ".mp4")) for f in files)
+    steps = client.get(f"/recordings/{rec_id}/steps").json()
+    assert steps["schema"] == "showme.steps/1" and steps["provider"] is None and "CLOUDFLARE" in steps["provider_note"]
+
+
+def test_video_field_is_not_accepted_as_a_requirement(data_dir):
+    # A client that still sends a video part is ignored for that part (not stored).
+    client = TestClient(app)
+    files = upload_files() + [("video", ("recording.webm", io.BytesIO(b"x" * 100), "video/webm"))]
+    rec_id = client.post("/recordings", files=files).json()["id"]
+    assert not (data_dir / rec_id / "recording.webm").exists()
+
+
+def test_rejects_bad_frame_names(data_dir):
+    client = TestClient(app)
+    r = client.post("/recordings", files=upload_files(frames=(("../evil.jpg", b"x"),)))
+    assert r.status_code == 200  # basename taken → stays inside frames/
     assert not (data_dir / "evil.jpg").exists()
-    r2 = _upload(client, b"x", capture_factory(640, 360), frames=(("bad name.png", b"x"),))
-    assert r2.status_code == 400
+    assert client.post("/recordings", files=upload_files(frames=(("bad name.png", b"x"),))).status_code == 400
 
 
 def test_bad_json_is_rejected(data_dir):
     client = TestClient(app)
     files = [
-        ("video", ("recording.webm", io.BytesIO(b"x"), "video/webm")),
         ("events", ("events.json", io.BytesIO(b"{not json"), "application/json")),
-        ("sensitive_tracks", ("s.json", io.BytesIO(b"[]"), "application/json")),
         ("capture", ("c.json", io.BytesIO(b"{}"), "application/json")),
     ]
     assert client.post("/recordings", files=files).status_code == 400
+
+
+def test_steps_404_until_ready(data_dir, monkeypatch):
+    monkeypatch.setattr(main.hooks, "process", lambda rec_id: None)
+    client = TestClient(app)
+    rec_id = client.post("/recordings", files=upload_files()).json()["id"]
+    r = client.get(f"/recordings/{rec_id}/steps")
+    assert r.status_code == 404 and "uploaded" in r.text
 
 
 def test_unknown_and_bad_ids(data_dir):
@@ -46,22 +65,8 @@ def test_unknown_and_bad_ids(data_dir):
     assert client.get("/recordings/..%2Fetc").status_code in (400, 404)
 
 
-@needs_ffmpeg
-def test_upload_then_normalize(tmp_path, data_dir, webm_factory, capture_factory):
-    src = tmp_path / "in.webm"
-    webm_factory(src, 640, 360, seconds=1.0)
+def test_list_recordings(data_dir):
     client = TestClient(app)
-    r = _upload(client, src.read_bytes(), capture_factory(640, 360))
-    assert r.status_code == 200, r.text
-    rec_id = r.json()["id"]
-    # TestClient runs background tasks before returning, but poll to be safe.
-    for _ in range(50):
-        st = client.get(f"/recordings/{rec_id}/status").json()
-        if st["state"] in ("normalized", "error"):
-            break
-        time.sleep(0.1)
-    assert st["state"] == "normalized", st
-    info = client.get(f"/recordings/{rec_id}").json()
-    assert "normalized.mp4" in info["files"] and "transform.json" in info["files"]
-    assert "frames/e0001_before.jpg" in info["files"]
-    assert json.loads((data_dir / rec_id / "transform.json").read_text())["output"] == {"w": 640, "h": 360}
+    rec_id = client.post("/recordings", files=upload_files()).json()["id"]
+    assert [r["id"] for r in client.get("/recordings").json()] == [rec_id]
+    assert json.loads((data_dir / rec_id / "status.json").read_text())["state"] == "steps_ready"

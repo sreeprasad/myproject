@@ -59,7 +59,7 @@ export interface RecordedEvent {
   id: string; // "e0001"
   type: EventType;
   epoch: number; // performance.timeOrigin + performance.now()
-  video_t?: number; // epoch - video_start_epoch (ms); filled by the host
+  t?: number; // ms since capture start (epoch - start_epoch); filled by the host
   url: string;
   viewport: Viewport;
   x?: number; // click point
@@ -79,33 +79,29 @@ export interface TrackBox extends Rect {
 
 export interface TrackSample {
   epoch: number;
-  video_t?: number;
   viewport: Viewport;
   boxes: TrackBox[];
 }
 
 export interface FrameSizeChange {
   epoch: number;
-  video_t?: number;
+  t?: number;
   width: number;
   height: number;
 }
 
 export interface CaptureInfo {
   source: "getDisplayMedia" | "tabCapture";
-  video_start_epoch: number;
-  first_chunk_epoch?: number;
-  first_chunk_latency_ms?: number;
+  start_epoch: number; // t = 0
   stop_epoch?: number;
-  mime_type: string;
   initial_viewport: Viewport;
   track_settings_start: { width?: number; height?: number; frameRate?: number };
   frame_sizes: FrameSizeChange[]; // decoded frame size at start + every change
   user_agent: string;
 }
 
+/** What gets uploaded: the event log, capture metadata and masked frames. Never video. */
 export interface RecordingBundle {
   events: RecordedEvent[];
-  sensitive_tracks: TrackSample[];
   capture: CaptureInfo;
 }

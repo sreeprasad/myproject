@@ -1,6 +1,6 @@
-// ALL frame logic, shared by the demo-app fallback (getDisplayMedia) and the extension's offscreen
-// document (tabCapture): ring buffer, before/after selection, masking, JPEG encoding, MediaRecorder
-// epoch bookkeeping and capture.json data. Input is a MediaStream; no Chrome extension APIs.
+// ALL frame logic, shared by the demo app (getDisplayMedia) and the future extension (tabCapture):
+// ring buffer, before/after selection, masking, JPEG encoding and capture.json data.
+// Input is a MediaStream; no Chrome extension APIs. No video is ever recorded.
 import { nowEpoch } from "./clock.ts";
 import { nearest, scaleBoxes } from "./tracks.ts";
 import type { CaptureInfo, TrackSample, Viewport } from "./types.ts";
@@ -138,28 +138,24 @@ export class FrameCapture {
 export interface CaptureSessionOptions extends FrameCaptureOptions {
   source: CaptureInfo["source"];
   viewport: Viewport;
-  timesliceMs?: number;
-  videoBitsPerSecond?: number;
 }
 
-/** MediaRecorder + FrameCapture + capture.json bookkeeping for one recording. */
+/**
+ * One capture session: the tab stream feeds the frame ring buffer ONLY. No video is recorded or kept;
+ * the stream never leaves the browser. Masked before/after JPEGs are the only pixels that get uploaded.
+ */
 export class CaptureSession {
   readonly frames: FrameCapture;
-  private recorder: MediaRecorder | null = null;
-  private chunks: Blob[] = [];
   readonly info: CaptureInfo;
   private stream: MediaStream;
-  private opts: CaptureSessionOptions;
 
   constructor(stream: MediaStream, opts: CaptureSessionOptions) {
     this.stream = stream;
-    this.opts = opts;
     this.frames = new FrameCapture(stream, opts);
     const settings = stream.getVideoTracks()[0]?.getSettings() ?? {};
     this.info = {
       source: opts.source,
-      video_start_epoch: 0,
-      mime_type: "",
+      start_epoch: 0,
       initial_viewport: opts.viewport,
       track_settings_start: { width: settings.width, height: settings.height, frameRate: settings.frameRate },
       frame_sizes: [],
@@ -173,48 +169,19 @@ export class CaptureSession {
     };
   }
 
-  /** Resolves at the MediaRecorder "start" event with video_start_epoch. */
+  /** Starts the frame buffer; resolves with start_epoch (t = 0 for every event). */
   async start(): Promise<number> {
     await this.frames.start();
     const { w, h } = this.frames.videoSize;
-    if (this.info.frame_sizes.length === 0) this.info.frame_sizes.push({ epoch: nowEpoch(), width: w, height: h });
-
-    const mime = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"].find((m) => MediaRecorder.isTypeSupported(m)) ?? "";
-    this.info.mime_type = mime;
-    const rec = new MediaRecorder(this.stream, {
-      mimeType: mime || undefined,
-      videoBitsPerSecond: this.opts.videoBitsPerSecond ?? 5_000_000,
-    });
-    this.recorder = rec;
-    rec.ondataavailable = (ev) => {
-      if (ev.data.size === 0) return;
-      if (this.chunks.length === 0) {
-        this.info.first_chunk_epoch = nowEpoch();
-        this.info.first_chunk_latency_ms = Math.round(this.info.first_chunk_epoch - this.info.video_start_epoch);
-      }
-      this.chunks.push(ev.data);
-    };
-    return new Promise((resolve, reject) => {
-      rec.onstart = () => {
-        this.info.video_start_epoch = nowEpoch();
-        resolve(this.info.video_start_epoch);
-      };
-      rec.onerror = (e) => reject(e);
-      rec.start(this.opts.timesliceMs ?? 1000);
-    });
+    this.info.start_epoch = nowEpoch();
+    if (this.info.frame_sizes.length === 0) this.info.frame_sizes.push({ epoch: this.info.start_epoch, width: w, height: h });
+    return this.info.start_epoch;
   }
 
-  async stop(): Promise<{ video: Blob; capture: CaptureInfo }> {
-    const rec = this.recorder;
-    if (rec && rec.state !== "inactive") {
-      await new Promise<void>((resolve) => {
-        rec.onstop = () => resolve();
-        rec.stop();
-      });
-    }
+  stop(): CaptureInfo {
     this.info.stop_epoch = nowEpoch();
     this.frames.stop();
     this.stream.getTracks().forEach((t) => t.stop());
-    return { video: new Blob(this.chunks, { type: this.info.mime_type || "video/webm" }), capture: this.info };
+    return this.info;
   }
 }
